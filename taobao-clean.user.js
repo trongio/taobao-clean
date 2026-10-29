@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Taobao Clean
 // @namespace    https://github.com/trongio/taobao-clean
-// @version      1.1.0
+// @version      1.2.0
 // @description  Calmer Taobao/Tmall: clean start page, no popups, ads, countdowns or recommendation feeds, plus English translation.
 // @author       trongio
 // @match        *://*.taobao.com/*
@@ -15,7 +15,10 @@
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
+// @grant        GM_setClipboard
 // @connect      translate.googleapis.com
+// @connect      open.er-api.com
+// @connect      buyertrade.taobao.com
 // @updateURL    https://raw.githubusercontent.com/trongio/taobao-clean/main/taobao-clean.user.js
 // @downloadURL  https://raw.githubusercontent.com/trongio/taobao-clean/main/taobao-clean.user.js
 // ==/UserScript==
@@ -25,7 +28,8 @@
 
   // ---------------------------------------------------------------- settings
 
-  const DEFAULTS = { enabled: true, home: true, translate: true, machine: true, popups: true, queryToZh: true };
+  const DEFAULTS = { enabled: true, home: true, translate: true, machine: true, popups: true, queryToZh: true,
+    currency: 'GEL', sameTab: true, tracking: true };
   const settings = Object.assign({}, DEFAULTS, GM_getValue('settings', {}));
   const save = () => GM_setValue('settings', settings);
 
@@ -162,6 +166,9 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   </select></label>
   <label><input type="checkbox" id="tmall"> Tmall only</label>
   <label><input type="checkbox" id="zh"> Translate English query to Chinese</label>
+  <label>Prices in <select id="cur">
+    <option value="GEL">GEL ₾</option><option value="USD">USD $</option><option value="EUR">EUR €</option><option value="off">Yuan only</option>
+  </select></label>
 </div>
 <div id="status"></div>
 <nav>
@@ -180,6 +187,8 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     $('zh').checked = settings.queryToZh;
     $('sort').value = GM_getValue('sort', '');
     $('tmall').checked = GM_getValue('tmall', false);
+    $('cur').value = settings.currency;
+    $('cur').onchange = () => { settings.currency = $('cur').value; save(); };
 
     const recentBox = $('recent');
     if (recent.length) {
@@ -238,7 +247,11 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     css.push(`[class*="RightLay"],[class*="rightLay"],[id*="J_shopkeeper"],[class*="Feedback--"],
       [class*="tbpc-sidebar" i],[class*="SideBar--"],[class*="sideBar--"]{display:none!important}`);
   }
-  if (css.length) GM_addStyle(css.join('\n'));
+  css.push(`[data-tbclean-fx]::after{content:" ≈ " attr(data-tbclean-fx);font:400 12px system-ui,sans-serif;color:#8a8780;margin-left:4px;white-space:nowrap}
+    img[data-tbclean-rev]{width:120px!important;height:120px!important;max-width:none!important;object-fit:cover!important;cursor:zoom-in!important;border-radius:6px}
+    .tbclean-track{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 4px 12px;font:12px system-ui,sans-serif;color:#444;background:#fff4ec;border:1px solid #ffd2b8;border-radius:6px;padding:2px 8px}
+    .tbclean-track button{font-size:11px;border:1px solid #ff5000;color:#ff5000;background:#fff;border-radius:4px;padding:0 6px;cursor:pointer}`);
+  GM_addStyle(css.join('\n'));
   const userStyle = GM_addStyle('');
   const applyUserHidden = () => {
     userStyle.textContent = userHidden.length ? userHidden.join(',\n') + '{display:none!important}' : '';
@@ -568,6 +581,278 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     toast('Hidden. Undo from the Tampermonkey menu.');
   }, true);
 
+  // ---------------------------------------------------------------- prices
+
+  // Approximate price in the viewer's currency, shown via ::after so the
+  // page's own (React-managed) DOM is never restructured.
+  const FX_SYMBOL = { GEL: '₾', USD: '$', EUR: '€' };
+  let fxRate = null;
+
+  function loadRate() {
+    if (!FX_SYMBOL[settings.currency]) return;
+    const saved = GM_getValue('fx', null);
+    if (saved && saved.rates[settings.currency]) fxRate = saved.rates[settings.currency];
+    if (saved && Date.now() - saved.at < 12 * 3600e3) return;
+    GM_xmlhttpRequest({
+      method: 'GET',
+      url: 'https://open.er-api.com/v6/latest/CNY',
+      timeout: 15000,
+      onload: (r) => {
+        try {
+          const j = JSON.parse(r.responseText);
+          if (j.result !== 'success' || !j.rates[settings.currency]) return;
+          GM_setValue('fx', { at: Date.now(), rates: j.rates });
+          fxRate = j.rates[settings.currency];
+          convertPrices();
+        } catch (e) { console.warn('[taobao-clean] exchange rate failed', e); }
+      },
+    });
+  }
+
+  const money = (cny) => {
+    const v = cny * fxRate;
+    return FX_SYMBOL[settings.currency] + (v < 100 ? v.toFixed(2) : Math.round(v).toLocaleString('en'));
+  };
+  const PRICE_RE = /^[¥￥]([\d,]+(?:\.\d+)?)(?:[-~]([\d,]+(?:\.\d+)?))?起?$/;
+  const priceOf = (el) => (el.textContent || '').replace(/\s+/g, '').match(PRICE_RE);
+  const num = (s) => parseFloat(s.replace(/,/g, ''));
+
+  function convertPrices() {
+    if (!fxRate || !document.body) return;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const done = new Set();
+    for (let n; (n = walker.nextNode());) {
+      if (!/[¥￥]/.test(n.data)) continue;
+      // "¥" and the digits often sit in sibling spans; climb to the element holding both.
+      let el = n.parentElement;
+      for (let i = 0; el && i < 4 && !priceOf(el); i++) el = el.parentElement;
+      if (!el || !priceOf(el) || el.closest('#tbclean-ui')) continue;
+      while (el.parentElement && el.parentElement !== document.body && priceOf(el.parentElement)) el = el.parentElement;
+      if (done.has(el)) continue;
+      done.add(el);
+      const m = priceOf(el);
+      const label = m[2] ? `${money(num(m[1]))}-${money(num(m[2]))}` : money(num(m[1]));
+      if (el.dataset.tbcleanFx !== label) el.dataset.tbcleanFx = label;
+    }
+  }
+
+  let fxTimer;
+  const scheduleFx = () => { clearTimeout(fxTimer); fxTimer = setTimeout(convertPrices, 500); };
+
+  // -------------------------------------------------------------- tracking
+
+  const COURIERS = {
+    '中通快递': 'ZTO Express', '圆通速递': 'YTO Express', '圆通快递': 'YTO Express', '申通快递': 'STO Express',
+    '韵达快递': 'Yunda Express', '韵达速递': 'Yunda Express', '顺丰速运': 'SF Express', '顺丰快递': 'SF Express',
+    '极兔速递': 'J&T Express', '京东快递': 'JD Logistics', '京东物流': 'JD Logistics', '邮政快递包裹': 'China Post',
+    '中国邮政': 'China Post', 'EMS': 'EMS', '德邦快递': 'Deppon', '德邦物流': 'Deppon', '百世快递': 'Best Express',
+    '菜鸟速递': 'Cainiao', '丹鸟': 'Danniao', '天天快递': 'TTK Express', '宅急送': 'ZJS Express',
+  };
+  const trackCache = GM_getValue('tracking', {});
+  const trackQueue = [];
+  const pageOrders = new Set();
+  let trackBusy = false;
+  const ORDER_NO = /(?:订单号|Order no\.)\s*[:：]?\s*(\d{12,})/;
+
+  function findOrders(root) {
+    if (!settings.tracking || KIND !== 'orders' || root.nodeType !== Node.ELEMENT_NODE) return;
+    for (const el of [root, ...root.querySelectorAll('span,div,td,p,label')]) {
+      if (el.dataset.tbcleanOrder || el.childElementCount > 4) continue;
+      const text = el.textContent || '';
+      const m = text.length <= 80 && text.match(ORDER_NO);
+      if (!m || [...el.children].some((c) => ORDER_NO.test(c.textContent))) continue;
+      el.dataset.tbcleanOrder = m[1];
+      pageOrders.add(m[1]);
+      trackQueue.push({ id: m[1], anchor: el });
+    }
+    pumpTracking();
+  }
+
+  // Same endpoint the orders page uses for its "track package" hover card.
+  function fetchTracking(id) {
+    return new Promise((resolve) => {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: `https://buyertrade.taobao.com/trade/json/transit_step.do?bizOrderId=${id}`,
+        responseType: 'arraybuffer',
+        timeout: 15000,
+        onload: (r) => {
+          try {
+            const gbk = /gbk|gb2312/i.test(r.responseHeaders || '');
+            const j = JSON.parse(new TextDecoder(gbk ? 'gbk' : 'utf-8').decode(r.response));
+            if (!j.expressId) return resolve(null);
+            const steps = (j.list || []).slice().sort((a, b) => String(b.time).localeCompare(String(a.time)));
+            const last = steps[0] || {};
+            resolve({
+              courier: COURIERS[j.expressName] || j.expressName || '',
+              number: String(j.expressId),
+              status: last.place || '',
+              time: last.time || '',
+              done: /签收|已妥投|delivered/i.test(last.place || ''),
+            });
+          } catch { resolve(null); }
+        },
+        onerror: () => resolve(null),
+        ontimeout: () => resolve(null),
+      });
+    });
+  }
+
+  async function pumpTracking() {
+    if (trackBusy) return;
+    trackBusy = true;
+    while (trackQueue.length) {
+      const { id, anchor } = trackQueue.shift();
+      let info = trackCache[id];
+      if (!info || !info.done) {
+        info = (await fetchTracking(id)) || info;
+        if (info) {
+          trackCache[id] = info;
+          const keep = Object.keys(trackCache).slice(-400);
+          GM_setValue('tracking', Object.fromEntries(keep.map((k) => [k, trackCache[k]])));
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (info && anchor.isConnected) renderTracking(anchor, info);
+    }
+    trackBusy = false;
+  }
+
+  function renderTracking(anchor, info) {
+    let box = anchor.nextElementSibling;
+    if (!box || !box.classList.contains('tbclean-track')) {
+      box = document.createElement('span');
+      box.className = 'tbclean-track';
+      anchor.insertAdjacentElement('afterend', box);
+    }
+    box.textContent = '';
+    const b = document.createElement('b');
+    b.textContent = `${info.courier} ${info.number}`;
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.textContent = 'Copy';
+    copy.onclick = (e) => { e.preventDefault(); e.stopPropagation(); GM_setClipboard(info.number); toast('Tracking number copied'); };
+    const status = document.createElement('span');
+    status.textContent = info.status ? ` ${info.time} ${info.status}` : '';
+    box.append(b, copy, status);
+  }
+
+  function exportCsv() {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [['Order', 'Courier', 'Tracking number', 'Last update', 'Status']];
+    for (const id of pageOrders) {
+      const t = trackCache[id];
+      rows.push([id, t?.courier, t?.number, t?.time, t?.status]);
+    }
+    const blob = new Blob(['﻿' + rows.map((r) => r.map(esc).join(',')).join('\r\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `taobao-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+
+  // ----------------------------------------------------------------- links
+
+  const ITEM_HOST = /^(item\.taobao\.com|detail\.tmall\.com|detail\.tmall\.hk|chaoshi\.detail\.tmall\.com)$/;
+  function cleanItemUrl(href) {
+    try {
+      const u = new URL(href, location.href);
+      const id = u.searchParams.get('id');
+      if (!ITEM_HOST.test(u.hostname) || !id) return null;
+      const out = new URL(`https://${u.hostname}${u.pathname}`);
+      out.searchParams.set('id', id);
+      if (u.searchParams.get('skuId')) out.searchParams.set('skuId', u.searchParams.get('skuId'));
+      return out.href;
+    } catch { return null; }
+  }
+
+  // Plain clicks on item links stay in this tab. Ctrl/middle click still opens a new one.
+  addEventListener('click', (e) => {
+    if (!settings.sameTab || KIND === 'login' || e.defaultPrevented || e.button !== 0) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!a || a.target !== '_blank') return;
+    const url = cleanItemUrl(a.href);
+    if (!url) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    location.href = url;
+  }, true);
+
+  // --------------------------------------------------------------- reviews
+
+  const textOf = (n) => (origText.get(n) ?? n.data).trim();
+  function findText(test) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walker.nextNode());) {
+      const el = n.parentElement;
+      if (el && test(textOf(n)) && el.getClientRects().length && !el.closest('#tbclean-ui')) return el;
+    }
+    return null;
+  }
+  const REVIEW_TAB = /^(用户评价|宝贝评价|累计评价|评价)\s*[(（]?[\d.万+]*[)）]?$/;
+  const PHOTO_FILTER = /^(有图|图片|带图|有图\/视频|图\/视频|图片\/视频)\s*[(（]?[\d.万+]*[)）]?$/;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function openPhotoReviews() {
+    lastInput = Date.now() + 8000; // the reviews dialog is wanted, don't treat it as a popup
+    let filter = findText((t) => PHOTO_FILTER.test(t));
+    if (!filter) {
+      const tab = findText((t) => REVIEW_TAB.test(t));
+      if (!tab) return toast('No reviews section found on this page');
+      tab.scrollIntoView({ block: 'center' });
+      tab.click();
+      for (let i = 0; i < 10 && !(filter = findText((t) => PHOTO_FILTER.test(t))); i++) await sleep(400);
+    }
+    if (!filter) return toast('Reviews opened, but no "with photos" filter was found');
+    filter.scrollIntoView({ block: 'center' });
+    filter.click();
+  }
+
+  // Review photos: bigger thumbnails and a full-size viewer. The review area is
+  // whatever holds the photo filter, found again as the page re-renders.
+  const fullSize = (src) => src.replace(/^\/\//, 'https://').replace(/(\.(?:jpe?g|png|webp|gif))_[^/]*$/i, '$1');
+  function reviewRoots() {
+    const roots = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walker.nextNode());) {
+      if (!PHOTO_FILTER.test(textOf(n))) continue;
+      let el = n.parentElement;
+      for (let i = 0; el && el !== document.body && i < 10; i++, el = el.parentElement) {
+        if (el.querySelectorAll('img').length >= 3) { roots.push(el); break; }
+      }
+    }
+    return roots;
+  }
+  function markReviewImages() {
+    if (KIND !== 'item') return;
+    for (const root of reviewRoots()) {
+      for (const img of root.querySelectorAll('img')) {
+        if (img.dataset.tbcleanRev || /avatar|tps-|\.gif|\.svg/i.test(img.src)) continue;
+        if (img.closest('[class*="avatar" i],[class*="head" i]')) continue;
+        img.dataset.tbcleanRev = '1';
+      }
+    }
+  }
+
+  let viewer;
+  function openViewer(list, index) {
+    viewer.list = list;
+    viewer.index = index;
+    viewer.show();
+  }
+  addEventListener('click', (e) => {
+    const img = e.target.closest && e.target.closest('img[data-tbclean-rev]');
+    if (!img || !viewer) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const scope = img.closest('li,[class*="item" i],[class*="Comment" i]') || document.body;
+    let list = [...scope.querySelectorAll('img[data-tbclean-rev]')];
+    if (list.length < 2) list = [...document.querySelectorAll('img[data-tbclean-rev]')];
+    openViewer(list.map((i) => fullSize(i.currentSrc || i.src)), list.indexOf(img));
+  }, true);
+
   // --------------------------------------------------------------- toolbar
 
   let toastEl;
@@ -582,16 +867,30 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     const hostEl = document.createElement('div');
     hostEl.id = 'tbclean-ui';
     const root = hostEl.attachShadow({ mode: 'open' });
+    const extra = KIND === 'item' ? '<button id="photos">Photo reviews</button><button id="copy">Copy link</button>'
+      : KIND === 'orders' ? '<button id="csv" title="Download orders and tracking numbers on this page">CSV</button>' : '';
     root.innerHTML = `<style>
-      .bar{position:fixed;left:12px;bottom:12px;z-index:2147483647;display:flex;gap:4px;font:600 12px/1 system-ui,sans-serif}
-      button{border:1px solid #0002;border-radius:999px;padding:7px 10px;background:#fffd;color:#222;cursor:pointer;backdrop-filter:blur(6px)}
-      button.on{background:#ff5000;color:#fff;border-color:#ff5000}
+      .bar{position:fixed;left:12px;bottom:12px;z-index:2147483646;display:flex;gap:4px;font:600 12px/1 system-ui,sans-serif}
+      .bar button{border:1px solid #0002;border-radius:999px;padding:7px 10px;background:#fffd;color:#222;cursor:pointer;backdrop-filter:blur(6px);font:inherit}
+      .bar button.on{background:#ff5000;color:#fff;border-color:#ff5000}
       .toast{position:fixed;left:12px;bottom:48px;z-index:2147483647;background:#222;color:#fff;padding:8px 12px;border-radius:8px;
         font:13px system-ui,sans-serif;opacity:0;transition:opacity .2s;pointer-events:none}
+      .viewer{position:fixed;inset:0;z-index:2147483647;background:#000e;display:none;align-items:center;justify-content:center}
+      .viewer.open{display:flex}
+      .viewer img{max-width:92vw;max-height:88vh;object-fit:contain;border-radius:6px}
+      .viewer button{position:absolute;border:0;border-radius:999px;background:#fff2;color:#fff;font:28px/1 system-ui,sans-serif;
+        width:52px;height:52px;cursor:pointer}
+      .viewer button:hover{background:#fff4}
+      .viewer .prev{left:16px;top:50%;transform:translateY(-50%)}.viewer .next{right:16px;top:50%;transform:translateY(-50%)}
+      .viewer .x{right:16px;top:16px;font-size:22px;width:44px;height:44px}
+      .viewer .count{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:#fff;font:13px system-ui,sans-serif}
     </style>
-    <div class="bar"><button id="lang" title="Toggle English translation"></button>
-    <button id="home" title="Clean start page">⌂</button></div><div class="toast"></div>`;
-    const lang = root.getElementById('lang');
+    <div class="bar"><button id="lang" title="Toggle English translation"></button>${extra}
+    <button id="home" title="Clean start page">⌂</button></div><div class="toast"></div>
+    <div class="viewer"><img alt=""><button class="prev" title="Previous">‹</button><button class="next" title="Next">›</button>
+    <button class="x" title="Close">×</button><div class="count"></div></div>`;
+    const $ = (sel) => root.querySelector(sel);
+    const lang = $('#lang');
     const paint = () => { lang.textContent = settings.translate ? 'EN' : '中'; lang.classList.toggle('on', settings.translate); };
     paint();
     lang.onclick = () => {
@@ -600,8 +899,37 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
       paint();
       if (settings.translate) translateTree(document.body); else untranslateAll();
     };
-    root.getElementById('home').onclick = () => { location.href = 'https://www.taobao.com/'; };
-    toastEl = root.querySelector('.toast');
+    $('#home').onclick = () => { location.href = 'https://www.taobao.com/'; };
+    if ($('#photos')) $('#photos').onclick = openPhotoReviews;
+    if ($('#copy')) $('#copy').onclick = () => { GM_setClipboard(cleanItemUrl(location.href) || location.href); toast('Link copied'); };
+    if ($('#csv')) $('#csv').onclick = exportCsv;
+    toastEl = $('.toast');
+
+    const v = $('.viewer'), vimg = v.querySelector('img'), count = $('.count');
+    viewer = {
+      list: [], index: 0,
+      show() {
+        if (!this.list.length) return;
+        this.index = (this.index + this.list.length) % this.list.length;
+        vimg.src = this.list[this.index];
+        count.textContent = `${this.index + 1} / ${this.list.length}`;
+        v.classList.add('open');
+      },
+      hide() { v.classList.remove('open'); vimg.removeAttribute('src'); },
+    };
+    $('.prev').onclick = () => { viewer.index--; viewer.show(); };
+    $('.next').onclick = () => { viewer.index++; viewer.show(); };
+    $('.x').onclick = () => viewer.hide();
+    v.onclick = (e) => { if (e.target === v || e.target === vimg) viewer.hide(); };
+    addEventListener('keydown', (e) => {
+      if (!v.classList.contains('open')) return;
+      if (e.key === 'Escape') viewer.hide();
+      else if (e.key === 'ArrowLeft') { viewer.index--; viewer.show(); }
+      else if (e.key === 'ArrowRight') { viewer.index++; viewer.show(); }
+      else return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
     document.documentElement.appendChild(hostEl);
   }
 
@@ -618,6 +946,14 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     toggle('translate', 'English translation');
     toggle('machine', 'Machine-translate titles (uses Google)');
     toggle('popups', 'Block popups');
+    toggle('sameTab', 'Open items in the same tab');
+    toggle('tracking', 'Show tracking numbers on orders');
+    const order = ['GEL', 'USD', 'EUR', 'off'];
+    GM_registerMenuCommand(`Prices in: ${settings.currency} (click to change)`, () => {
+      settings.currency = order[(order.indexOf(settings.currency) + 1) % order.length];
+      save();
+      location.reload();
+    });
     GM_registerMenuCommand('Undo last hidden element', () => {
       const list = GM_getValue(hiddenKey, []);
       list.pop();
@@ -643,9 +979,17 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
 
   function start() {
     if (window.top === window) mountUI();
+    if (KIND === 'item') {
+      const clean = cleanItemUrl(location.href);
+      if (clean && clean !== location.href) history.replaceState(history.state, '', clean);
+    }
+    loadRate();
     cleanTree(document.body);
     translateTree(document.body);
     killPopups();
+    convertPrices();
+    findOrders(document.body);
+    markReviewImages();
 
     const dirty = new Set();
     let timer;
@@ -661,10 +1005,12 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
         dirty.clear();
         for (const n of nodes) {
           if (!n.isConnected) continue;
-          if (n.nodeType === Node.ELEMENT_NODE) cleanTree(n);
+          if (n.nodeType === Node.ELEMENT_NODE) { cleanTree(n); findOrders(n); }
           translateTree(n);
         }
         killPopups();
+        scheduleFx();
+        markReviewImages();
         for (const n of touched) if (!n.isConnected) touched.delete(n);
       }, 250);
     }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
