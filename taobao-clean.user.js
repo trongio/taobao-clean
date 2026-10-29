@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Taobao Clean
 // @namespace    https://github.com/trongio/taobao-clean
-// @version      1.2.0
+// @version      1.2.1
 // @description  Calmer Taobao/Tmall: clean start page, no popups, ads, countdowns or recommendation feeds, plus English translation.
 // @author       trongio
 // @match        *://*.taobao.com/*
@@ -135,7 +135,7 @@
 <style>
 :root{--bg:#fafaf7;--fg:#1d1d1b;--muted:#77746c;--line:#e4e1d8;--accent:#ff5000;--card:#fff}
 @media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#ecebe6;--muted:#9a978e;--line:#2c2b28;--card:#1c1c1a}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:720px;margin:0 auto;padding:12vh 16px 48px}
 h1{font-size:28px;margin:0 0 20px;letter-spacing:-.02em}h1 span{color:var(--accent)}
 form{display:flex;gap:8px;flex-wrap:wrap}
@@ -297,15 +297,21 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     return card && card.querySelectorAll(ITEM_LINKS).length <= 3 ? card : null;
   }
 
+  // Hide the grid cell too, otherwise the ad leaves a hole in the results.
+  function cellOf(el) {
+    while (el.parentElement && el.parentElement !== document.body && el.parentElement.childElementCount === 1) el = el.parentElement;
+    return el;
+  }
+
   function hideAds(root) {
-    for (const a of root.querySelectorAll('a[href*="simba.taobao.com"]')) hide(cardOf(a) || a);
+    for (const a of root.querySelectorAll('a[href*="simba.taobao.com"]')) hide(cellOf(cardOf(a) || a));
     // Small "广告"/"AD" labels mark sponsored cards.
     for (const el of root.querySelectorAll('span,div,i,em')) {
       if (el.childElementCount) continue;
       const t = (origText.get(el.firstChild) ?? el.textContent).trim();
       if (t !== '广告' && t !== 'AD') continue;
       const card = cardOf(el);
-      if (card) hide(card);
+      if (card) hide(cellOf(card));
     }
   }
 
@@ -348,7 +354,7 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   const DICT = {
     '加入购物车': 'Add to cart', '立即购买': 'Buy now', '领券购买': 'Buy with coupon', '购物车': 'Cart',
     '我的淘宝': 'My Taobao', '收藏夹': 'Favorites', '收藏': 'Favorite', '已收藏': 'Saved', '收藏宝贝': 'Save item',
-    '登录': 'Log in', '请登录': 'Log in', '免费注册': 'Sign up', '退出': 'Log out', '搜索': 'Search', '宝贝': 'Items',
+    '登录': 'Log in', '请登录': 'Log in', '免费注册': 'Sign up', '退出': 'Log out', '搜索': 'Search', '宝贝': 'Items', '所有宝贝': 'All items',
     '天猫': 'Tmall', '店铺': 'Store', '进店逛逛': 'Visit store', '进入店铺': 'Visit store', '综合': 'Best match',
     '综合排序': 'Best match', '销量': 'Sales', '价格': 'Price', '信用': 'Rating', '新品': 'New', '包邮': 'Free shipping',
     '运费': 'Shipping', '快递': 'Express', '免运费': 'Free shipping', '快递: 免运费': 'Free shipping', '发货': 'Ships',
@@ -621,18 +627,27 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     if (!fxRate || !document.body) return;
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const done = new Set();
+    const mark = (el, m) => {
+      if (done.has(el)) return;
+      done.add(el);
+      const label = m[2] ? `${money(num(m[1]))}-${money(num(m[2]))}` : money(num(m[1]));
+      if (el.dataset.tbcleanFx !== label) el.dataset.tbcleanFx = label;
+    };
     for (let n; (n = walker.nextNode());) {
       if (!/[¥￥]/.test(n.data)) continue;
-      // "¥" and the digits often sit in sibling spans; climb to the element holding both.
+      // A lone "¥" unit followed by the digits in the next element (search cards).
+      const unit = n.parentElement;
+      if (unit && /^[¥￥]$/.test(n.data.trim()) && unit.childNodes.length === 1) {
+        const sib = unit.nextElementSibling;
+        const m = sib && (sib.textContent || '').replace(/\s+/g, '').match(/^([\d,]+(?:\.\d+)?)(?:[-~]([\d,]+(?:\.\d+)?))?/);
+        if (m) { mark(sib, m); continue; }
+      }
+      // Otherwise climb to the element holding both "¥" and the digits.
       let el = n.parentElement;
       for (let i = 0; el && i < 4 && !priceOf(el); i++) el = el.parentElement;
       if (!el || !priceOf(el) || el.closest('#tbclean-ui')) continue;
       while (el.parentElement && el.parentElement !== document.body && priceOf(el.parentElement)) el = el.parentElement;
-      if (done.has(el)) continue;
-      done.add(el);
-      const m = priceOf(el);
-      const label = m[2] ? `${money(num(m[1]))}-${money(num(m[2]))}` : money(num(m[1]));
-      if (el.dataset.tbcleanFx !== label) el.dataset.tbcleanFx = label;
+      mark(el, priceOf(el));
     }
   }
 
