@@ -8,7 +8,7 @@ A userscript that makes Taobao and Tmall calmer to use, in English.
 - **English.** Buttons, labels, order statuses and sales counts use a built-in dictionary (instant, offline). Product titles and specs are machine translated with Google Translate and cached. The **EN / 中** button in the bottom-left corner switches back to Chinese at any time.
 - **Prices in your currency.** Every ¥ price gets an approximate GEL, USD or EUR price next to it (exchange rate refreshed twice a day). Pick the currency on the start page.
 - **Tracking numbers.** The orders list shows each order's courier and tracking number with a Copy button, and **CSV** downloads the page's orders and tracking numbers (handy for forwarder warehouses).
-- **Links that behave.** Items open in the same tab instead of piling up new ones (Ctrl+click still opens a new tab), item URLs are stripped of tracking junk, and **Copy link** copies a clean link.
+- **Links that behave.** Items open in the same tab instead of piling up new ones (Ctrl+click still opens a new tab), and **Copy link** copies a short, clean item link.
 - **Cost to Georgia.** On item pages, **🧮** shows the item price plus your forwarder's freight (air or ground, using the weight from the specs or one you type in) and warns when a parcel goes over the duty-free limit (300 GEL including shipping; check with your forwarder, it can change). In the cart it checks the selected total. Enter your forwarder's USD per kg in ⚙.
 - **Seller check.** The same card shows the store's age and ratings, and flags new stores and low scores.
 - **Photo wall.** **📷 Photo reviews** opens only the reviews that have photos, shown as a big photo grid. Press it again to show the review text.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Taobao Clean
 // @namespace    https://github.com/trongio/taobao-clean
-// @version      1.4.1
+// @version      1.4.2
 // @description  Calmer Taobao/Tmall: clean start page, no popups, ads, countdowns or recommendation feeds, plus English translation.
 // @author       trongio
 // @match        *://*.taobao.com/*
@@ -840,16 +840,13 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   }
 
   // Plain clicks on item links stay in this tab. Ctrl/middle click still opens a new one.
+  // Only target=_blank is dropped: the link itself and Taobao's own click handling stay
+  // untouched, since a missing tracking chain can trip Taobao's "abnormal access" check.
   addEventListener('click', (e) => {
-    if (!settings.sameTab || KIND === 'login' || e.defaultPrevented || e.button !== 0) return;
+    if (!settings.sameTab || KIND === 'login' || e.button !== 0) return;
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     const a = e.target.closest && e.target.closest('a[href]');
-    if (!a || a.target !== '_blank') return;
-    const url = cleanItemUrl(a.href);
-    if (!url) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    location.href = url;
+    if (a && a.target === '_blank' && cleanItemUrl(a.href)) a.removeAttribute('target');
   }, true);
 
   // --------------------------------------------------------------- reviews
@@ -1388,10 +1385,6 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
 
   function start() {
     if (window.top === window) mountUI();
-    if (KIND === 'item') {
-      const clean = cleanItemUrl(location.href);
-      if (clean && clean !== location.href) history.replaceState(history.state, '', clean);
-    }
     loadRate();
     cleanTree(document.body);
     translateTree(document.body);
