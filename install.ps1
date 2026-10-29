@@ -18,7 +18,7 @@ $info = @{
                  Paths = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe")
                  Id = 'iikmkjmpaadaobahmlepeloendndfphd'; Store = 'https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd'; Ext = 'edge://extensions/?id=' }
     brave   = @{ Exe = 'brave.exe'; Profile = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data"
-                 Paths = @("$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe", "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe")
+                 Paths = @("$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe", "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe", "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe")
                  Id = 'dhdgffkkebhmkfjojejmpbldmpobfkfo'; Store = 'https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo'; Ext = 'brave://extensions/?id=' }
     firefox = @{ Exe = 'firefox.exe'; Profile = "$env:APPDATA\Mozilla\Firefox\Profiles"
                  Paths = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe", "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe")
@@ -29,7 +29,10 @@ $info = @{
 $exe = $null
 foreach ($root in 'HKCU:', 'HKLM:') {
     $key = "$root\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$($info.Exe)"
-    if (Test-Path $key) { $exe = (Get-ItemProperty $key).'(default)'; if ($exe -and (Test-Path $exe)) { break } else { $exe = $null } }
+    if (Test-Path $key) {
+        $exe = "$((Get-ItemProperty $key).'(default)')".Trim('"')
+        if ($exe -and (Test-Path $exe) -and ((Split-Path $exe -Leaf) -eq $info.Exe)) { break } else { $exe = $null }
+    }
 }
 if (-not $exe) { $exe = $info.Paths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1 }
 if (-not $exe) { Write-Host "Could not find $Browser. Install it, or pass another browser (edge, firefox, brave)." -ForegroundColor Red; return }
@@ -44,6 +47,7 @@ if ($Browser -eq 'firefox') {
 }
 
 Write-Host "Taobao Clean installer ($Browser)" -ForegroundColor Cyan
+Write-Host "Using: $exe"
 
 if (-not $installed) {
     Write-Host 'Step 1: install Tampermonkey (it runs the script).'
