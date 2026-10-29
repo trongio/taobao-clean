@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Taobao Clean
 // @namespace    https://github.com/trongio/taobao-clean
-// @version      1.4.0
+// @version      1.4.1
 // @description  Calmer Taobao/Tmall: clean start page, no popups, ads, countdowns or recommendation feeds, plus English translation.
 // @author       trongio
 // @match        *://*.taobao.com/*
@@ -281,6 +281,10 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     css.push(`[class*="countdown" i],[class*="count-down" i],[class*="CountDown"],[class*="timeLimit" i],
       [class*="tb-toolkit" i],[class*="FloatBar" i],[class*="float-bar" i],[class*="floatLayer" i],
       [class*="J_Toolkit"],[class*="redPacket" i],[class*="red-packet" i],[class*="hongbao" i]{display:none!important}`);
+  }
+  if (KIND === 'item') {
+    // The options column stretches to the page height and pushes Buy / Add to cart to the very bottom.
+    css.push(`[class*="PurchasePanel--"] [class*="scrollWrap--"]{flex:0 0 auto!important;height:auto!important;max-height:none!important}`);
   }
   if (KIND === 'search') {
     css.push(`[class*="RightLay"],[class*="rightLay"],[id*="J_shopkeeper"],[class*="Feedback--"],
