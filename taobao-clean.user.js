@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Taobao Clean
 // @namespace    https://github.com/trongio/taobao-clean
-// @version      1.2.2
+// @version      1.3.0
 // @description  Calmer Taobao/Tmall: clean start page, no popups, ads, countdowns or recommendation feeds, plus English translation.
 // @author       trongio
 // @match        *://*.taobao.com/*
@@ -42,7 +42,7 @@
     : host === 'www.taobao.com' && (path === '/' || path === '/index.php') ? 'home'
     : host === 's.taobao.com' || host === 'list.tmall.com' ? 'search'
     : /^(item\.taobao\.com|detail\.tmall\.com|chaoshi\.detail\.tmall\.com|detail\.tmall\.hk)$/.test(host) ? 'item'
-    : /^cart\./.test(host) ? 'cart'
+    : /^cart\./.test(host) || /^\/cart\//.test(path) ? 'cart'
     : /^buy\./.test(host) ? 'checkout'
     : /^(buyertrade|trade|i|refund2?|wuliu)\./.test(host) ? 'orders'
     : 'other';
@@ -354,7 +354,7 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   const DICT = {
     '加入购物车': 'Add to cart', '立即购买': 'Buy now', '领券购买': 'Buy with coupon', '购物车': 'Cart',
     '我的淘宝': 'My Taobao', '收藏夹': 'Favorites', '收藏': 'Favorite', '已收藏': 'Saved', '收藏宝贝': 'Save item',
-    '登录': 'Log in', '请登录': 'Log in', '免费注册': 'Sign up', '退出': 'Log out', '搜索': 'Search', '宝贝': 'Items', '所有宝贝': 'All items',
+    '登录': 'Log in', '请登录': 'Log in', '免费注册': 'Sign up', '退出': 'Log out', '搜索': 'Search', '宝贝': 'Items', '所有宝贝': 'All items', '宝贝收藏': 'Saved items', '我的购物车': 'My cart', '我的足迹': 'Recently viewed', '店铺收藏': 'Saved stores', '购买过的店铺': 'Stores bought from', '回收站': 'Recycle bin', '评价管理': 'My reviews',
     '天猫': 'Tmall', '店铺': 'Store', '进店逛逛': 'Visit store', '进入店铺': 'Visit store', '综合': 'Best match',
     '综合排序': 'Best match', '销量': 'Sales', '价格': 'Price', '信用': 'Rating', '新品': 'New', '包邮': 'Free shipping',
     '运费': 'Shipping', '快递': 'Express', '免运费': 'Free shipping', '快递: 免运费': 'Free shipping', '发货': 'Ships',
@@ -584,7 +584,7 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     userHidden = [...userHidden, selectorFor(e.target)];
     GM_setValue(hiddenKey, userHidden);
     applyUserHidden();
-    toast('Hidden. Undo from the Tampermonkey menu.');
+    toast('Hidden. ⚙ > Show again to undo.');
   }, true);
 
   // ---------------------------------------------------------------- prices
@@ -864,46 +864,123 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   // --------------------------------------------------------------- toolbar
 
   let toastEl;
-  function toast(msg) {
+  let toastTimer;
+  function toast(msg, ms = 2200) {
     if (!toastEl) return;
     toastEl.textContent = msg;
     toastEl.style.opacity = '1';
-    setTimeout(() => { toastEl.style.opacity = '0'; }, 2200);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.style.opacity = '0'; }, ms);
   }
+
+  // Settings that need a reload to take effect; translation switches live.
+  const PANEL = [
+    ['translate', 'English translation', 'Buttons, labels and order statuses'],
+    ['machine', 'Translate product titles', 'Uses Google Translate'],
+    ['popups', 'Block popups', 'Coupon and "download the app" pop-ups'],
+    ['sameTab', 'Open items in this tab', 'Ctrl+click still opens a new tab'],
+    ['tracking', 'Tracking numbers on orders', 'Courier and number under each order'],
+    ['home', 'Clean start page', 'Replaces the taobao.com homepage'],
+  ];
 
   function mountUI() {
     const hostEl = document.createElement('div');
     hostEl.id = 'tbclean-ui';
     const root = hostEl.attachShadow({ mode: 'open' });
-    const extra = KIND === 'item' ? '<button id="photos">Photo reviews</button><button id="copy">Copy link</button>'
-      : KIND === 'orders' ? '<button id="csv" title="Download orders and tracking numbers on this page">CSV</button>' : '';
+    const extra = KIND === 'item'
+      ? '<button id="photos" title="Open reviews that have photos">📷 Photo reviews</button><button id="copy" title="Copy a short link to this item">🔗 Copy link</button>'
+      : KIND === 'orders' ? '<button id="csv" title="Download the orders and tracking numbers on this page">⬇ Export CSV</button>' : '';
+    const rows = PANEL.map(([key, label, hint]) => `<label class="row"><input type="checkbox" data-key="${key}">
+      <span><b>${label}</b><small>${hint}</small></span></label>`).join('');
     root.innerHTML = `<style>
-      .bar{position:fixed;left:12px;bottom:12px;z-index:2147483646;display:flex;gap:4px;font:600 12px/1 system-ui,sans-serif}
-      .bar button{border:1px solid #0002;border-radius:999px;padding:7px 10px;background:#fffd;color:#222;cursor:pointer;backdrop-filter:blur(6px);font:inherit}
+      :host{all:initial}
+      .bar{position:fixed;left:12px;bottom:12px;z-index:2147483646;display:flex;gap:6px;font:600 13px/1 system-ui,sans-serif}
+      .bar button{border:1px solid #0000001f;border-radius:999px;padding:8px 12px;background:#ffffffee;color:#222;cursor:pointer;
+        box-shadow:0 1px 4px #0002;font:inherit;white-space:nowrap}
+      .bar button:hover{border-color:#ff5000}
       .bar button.on{background:#ff5000;color:#fff;border-color:#ff5000}
-      .toast{position:fixed;left:12px;bottom:48px;z-index:2147483647;background:#222;color:#fff;padding:8px 12px;border-radius:8px;
-        font:13px system-ui,sans-serif;opacity:0;transition:opacity .2s;pointer-events:none}
+      .toast{position:fixed;left:12px;bottom:56px;z-index:2147483647;max-width:340px;background:#222;color:#fff;padding:10px 14px;
+        border-radius:8px;font:13px/1.4 system-ui,sans-serif;opacity:0;transition:opacity .2s;pointer-events:none}
+      .panel{position:fixed;left:12px;bottom:56px;z-index:2147483647;width:300px;background:#fff;color:#222;border-radius:12px;
+        box-shadow:0 8px 30px #0003;padding:14px;font:13px/1.35 system-ui,sans-serif;display:none}
+      .panel.open{display:block}
+      .panel h3{margin:0 0 10px;font-size:14px}
+      .row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;cursor:pointer;border-top:1px solid #eee}
+      .row input{margin-top:2px;accent-color:#ff5000;width:16px;height:16px}
+      .row small{display:block;color:#777;font-weight:400}
+      .line{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid #eee}
+      select,.panel button{font:inherit;border:1px solid #ddd;border-radius:6px;padding:4px 8px;background:#fff;color:#222;cursor:pointer}
+      .panel .done{background:#ff5000;border-color:#ff5000;color:#fff;font-weight:600;width:100%;padding:8px;margin-top:8px}
+      .tip{color:#777;font-size:12px;margin-top:8px}
+      @media (prefers-color-scheme:dark){
+        .panel{background:#1f1f1d;color:#eee}.row,.line{border-color:#333}.row small,.tip{color:#999}
+        select,.panel button{background:#2a2a28;color:#eee;border-color:#444}
+      }
     </style>
-    <div class="bar"><button id="lang" title="Toggle English translation"></button>${extra}
-    <button id="home" title="Clean start page">⌂</button></div><div class="toast"></div>
-`;
+    <div class="bar"><button id="lang" title="Switch between English and Chinese"></button>${extra}
+      <button id="home" title="Go to the clean start page">⌂ Start</button>
+      <button id="gear" title="Taobao Clean settings">⚙</button></div>
+    <div class="panel" role="dialog" aria-label="Taobao Clean settings"><h3>Taobao Clean</h3>${rows}
+      <div class="line"><span>Show prices in</span><select id="cur">
+        <option value="GEL">GEL ₾</option><option value="USD">USD $</option><option value="EUR">EUR €</option><option value="off">Yuan only</option></select></div>
+      <div class="line"><span>Hidden on this site: <b id="hcount"></b></span><button id="unhide">Show again</button></div>
+      <div class="tip">Hold Alt + Shift and click anything to hide it.</div>
+      <button class="done">Done</button></div>
+    <div class="toast" role="status"></div>`;
     const $ = (sel) => root.querySelector(sel);
     const lang = $('#lang');
-    const paint = () => { lang.textContent = settings.translate ? 'EN' : '中'; lang.classList.toggle('on', settings.translate); };
+    const paint = () => { lang.textContent = settings.translate ? 'EN' : '中文'; lang.classList.toggle('on', settings.translate); };
     paint();
-    lang.onclick = () => {
-      settings.translate = !settings.translate;
+    const setTranslate = (on) => {
+      settings.translate = on;
       save();
       paint();
-      if (settings.translate) translateTree(document.body); else untranslateAll();
+      if (on) translateTree(document.body); else untranslateAll();
     };
+    lang.onclick = () => setTranslate(!settings.translate);
     $('#home').onclick = () => { location.href = 'https://www.taobao.com/'; };
     if ($('#photos')) $('#photos').onclick = openPhotoReviews;
     if ($('#copy')) $('#copy').onclick = () => { GM_setClipboard(cleanItemUrl(location.href) || location.href); toast('Link copied'); };
     if ($('#csv')) $('#csv').onclick = exportCsv;
     toastEl = $('.toast');
 
+    // Settings panel
+    const panel = $('.panel');
+    let needsReload = false;
+    const fill = () => {
+      for (const box of root.querySelectorAll('[data-key]')) box.checked = !!settings[box.dataset.key];
+      $('#cur').value = settings.currency;
+      $('#hcount').textContent = userHidden.length;
+      $('#unhide').disabled = !userHidden.length;
+    };
+    $('#gear').onclick = () => { fill(); panel.classList.toggle('open'); };
+    root.querySelectorAll('[data-key]').forEach((box) => {
+      box.onchange = () => {
+        if (box.dataset.key === 'translate') return setTranslate(box.checked);
+        settings[box.dataset.key] = box.checked;
+        save();
+        needsReload = true;
+      };
+    });
+    $('#cur').onchange = () => { settings.currency = $('#cur').value; save(); needsReload = true; };
+    $('#unhide').onclick = () => {
+      userHidden = [];
+      GM_setValue(hiddenKey, []);
+      applyUserHidden();
+      fill();
+    };
+    $('.done').onclick = () => {
+      panel.classList.remove('open');
+      if (needsReload) location.reload();
+    };
+    addEventListener('keydown', (e) => { if (e.key === 'Escape') panel.classList.remove('open'); });
+
     document.documentElement.appendChild(hostEl);
+
+    if (!GM_getValue('welcomed', false)) {
+      GM_setValue('welcomed', true);
+      setTimeout(() => toast('Taobao Clean is on. EN switches language, ⚙ has the settings, and Alt + Shift + click hides anything.', 9000), 1500);
+    }
   }
 
   // ------------------------------------------------------------------ menu

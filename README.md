@@ -58,16 +58,13 @@ Browsers deliberately block programs from installing extensions silently. The on
 
 ## Settings
 
-Click the Tampermonkey icon while on Taobao to toggle:
+Everything is in the floating bar at the bottom-left of every Taobao page:
 
-- Taobao Clean on or off
-- Clean start page (the original is always at `https://www.taobao.com/?tbclean=off`)
-- English translation, and machine translation of titles
-- Popup blocking
-- Opening items in the same tab
-- Tracking numbers on the orders page
-- Price currency (GEL, USD, EUR or yuan only)
-- Undo the last hidden element, or reset hidden elements for the site
+- **EN / 中文** switches between English and the original Chinese.
+- **⌂ Start** goes to the clean start page (the original homepage is always at `https://www.taobao.com/?tbclean=off`).
+- **⚙** opens the settings: translation, product-title translation, popup blocking, opening items in the same tab, tracking numbers, the clean start page, the price currency, and **Show again** for anything you hid with Alt + Shift + click.
+
+Item pages also get **📷 Photo reviews** and **🔗 Copy link**, and the orders page gets **⬇ Export CSV**.
 
 ## Privacy
 
