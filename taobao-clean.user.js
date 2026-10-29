@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Taobao Clean
 // @namespace    https://github.com/trongio/taobao-clean
-// @version      1.3.0
+// @version      1.4.0
 // @description  Calmer Taobao/Tmall: clean start page, no popups, ads, countdowns or recommendation feeds, plus English translation.
 // @author       trongio
 // @match        *://*.taobao.com/*
@@ -29,7 +29,8 @@
   // ---------------------------------------------------------------- settings
 
   const DEFAULTS = { enabled: true, home: true, translate: true, machine: true, popups: true, queryToZh: true,
-    currency: 'GEL', sameTab: true, tracking: true };
+    currency: 'GEL', sameTab: true, tracking: true,
+    rateAir: null, rateGround: null, shipMode: 'ground', dutyLimit: 300 };
   const settings = Object.assign({}, DEFAULTS, GM_getValue('settings', {}));
   const save = () => GM_setValue('settings', settings);
 
@@ -151,6 +152,14 @@ nav a{display:block;padding:14px 16px;background:var(--card);border:1px solid va
 nav a:hover{border-color:var(--accent)}nav small{display:block;color:var(--muted);font-weight:400;font-size:13px}
 .recent{margin-top:32px}.recent h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
 .recent button{background:var(--card);color:var(--fg);border:1px solid var(--line);padding:6px 12px;font-weight:400;font-size:14px;margin:0 6px 6px 0}
+.watch{margin-top:32px}.watch h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+.w{display:grid;grid-template-columns:56px 1fr auto auto;gap:12px;align-items:center;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+.w img{width:56px;height:56px;object-fit:cover;border-radius:6px;background:var(--line)}
+.w a{color:var(--fg);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px}
+.w small{display:block;color:var(--muted);font-size:12px}
+.w .p{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.w .down{color:#1a8f3c}.w .up{color:#d1242f}
+.w .x{background:none;border:0;color:var(--muted);font-size:18px;padding:4px 8px;cursor:pointer}
 footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--muted)}
 </style></head>
 <body><main>
@@ -179,6 +188,7 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   <a href="${ADDR.refunds}">Refunds<small>退款/售后</small></a>
   <a href="${ADDR.myTaobao}">My Taobao<small>我的淘宝</small></a>
 </nav>
+<div class="watch" id="watch"></div>
 <div class="recent" id="recent"></div>
 <footer>Taobao Clean. <a href="/?tbclean=off">Open the original homepage</a></footer>
 </main></body>`;
@@ -189,6 +199,35 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     $('tmall').checked = GM_getValue('tmall', false);
     $('cur').value = settings.currency;
     $('cur').onchange = () => { settings.currency = $('cur').value; save(); };
+
+    // Watchlist: prices are refreshed whenever you open a saved item.
+    const watchBox = $('watch');
+    const fx = GM_getValue('fx', null);
+    const cur = ({ GEL: '₾', USD: '$', EUR: '€' })[settings.currency];
+    const conv = (cny) => (cur && fx && fx.rates[settings.currency] ? ` ≈ ${cur}${(cny * fx.rates[settings.currency]).toFixed(2)}` : '');
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const paintWatch = () => {
+      const items = Object.values(GM_getValue('watch', {})).sort((a, b) => b.seen - a.seen);
+      watchBox.innerHTML = items.length ? '<h2>Watchlist</h2>' : '';
+      for (const w of items) {
+        const change = w.first && w.last != null ? Math.round(((w.last - w.first) / w.first) * 100) : 0;
+        const row = document.createElement('div');
+        row.className = 'w';
+        row.innerHTML = `<img alt="" src="${esc(w.img || '')}"><div><a href="${esc(w.url)}">${esc(w.title || w.id)}</a>
+          <small>Checked ${new Date(w.seen).toLocaleDateString()}${w.min != null && w.min < w.first ? ` · lowest ¥${w.min}` : ''}</small></div>
+          <div class="p">${w.last != null ? `¥${w.last}` : ''}<small>${w.last != null ? conv(w.last) : ''}</small>
+          <small class="${change < 0 ? 'down' : change > 0 ? 'up' : ''}">${change ? `${change > 0 ? '▲' : '▼'} ${Math.abs(change)}% since saved` : 'no change'}</small></div>
+          <button class="x" title="Remove">×</button>`;
+        row.querySelector('.x').onclick = () => {
+          const list = GM_getValue('watch', {});
+          delete list[w.id];
+          GM_setValue('watch', list);
+          paintWatch();
+        };
+        watchBox.appendChild(row);
+      }
+    };
+    paintWatch();
 
     const recentBox = $('recent');
     if (recent.length) {
@@ -249,6 +288,12 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   }
   css.push(`[data-tbclean-fx]::after{content:" ≈ " attr(data-tbclean-fx);font:400 12px system-ui,sans-serif;color:#8a8780;margin-left:4px;white-space:nowrap}
     img[data-tbclean-rev]{width:120px!important;height:120px!important;max-width:none!important;object-fit:cover!important;border-radius:6px}
+    [data-tbclean-size]::after{content:"  " attr(data-tbclean-size);font:400 11px system-ui,sans-serif;color:#8a8780;white-space:nowrap}
+    .tbclean-grid [class*="Drawer--"] [class*="Comment--"]{display:inline-block!important;width:auto!important;margin:6px!important;padding:0!important;border:0!important;vertical-align:top}
+    .tbclean-grid [class*="Drawer--"] [class*="Comment--"]>:not([class*="contentWrapper"]),
+    .tbclean-grid [class*="Drawer--"] [class*="contentWrapper"] [class*="content--"],
+    .tbclean-grid [class*="Drawer--"] [class*="splitLine"]{display:none!important}
+    .tbclean-grid [class*="Drawer--"] img[data-tbclean-rev]{width:220px!important;height:220px!important}
     .tbclean-track{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 4px 12px;font:12px system-ui,sans-serif;color:#444;background:#fff4ec;border:1px solid #ffd2b8;border-radius:6px;padding:2px 8px}
     .tbclean-track button{font-size:11px;border:1px solid #ff5000;color:#ff5000;background:#fff;border-radius:4px;padding:0 6px;cursor:pointer}`);
   GM_addStyle(css.join('\n'));
@@ -592,12 +637,14 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   // Approximate price in the viewer's currency, shown via ::after so the
   // page's own (React-managed) DOM is never restructured.
   const FX_SYMBOL = { GEL: '₾', USD: '$', EUR: '€' };
-  let fxRate = null;
+  let fxRate = null, fxRates = null;
 
   function loadRate() {
-    if (!FX_SYMBOL[settings.currency]) return;
     const saved = GM_getValue('fx', null);
-    if (saved && saved.rates[settings.currency]) fxRate = saved.rates[settings.currency];
+    if (saved) {
+      fxRates = saved.rates;
+      fxRate = saved.rates[settings.currency] || null;
+    }
     if (saved && Date.now() - saved.at < 12 * 3600e3) return;
     GM_xmlhttpRequest({
       method: 'GET',
@@ -606,9 +653,10 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
       onload: (r) => {
         try {
           const j = JSON.parse(r.responseText);
-          if (j.result !== 'success' || !j.rates[settings.currency]) return;
+          if (j.result !== 'success') return;
           GM_setValue('fx', { at: Date.now(), rates: j.rates });
-          fxRate = j.rates[settings.currency];
+          fxRates = j.rates;
+          fxRate = j.rates[settings.currency] || null;
           convertPrices();
         } catch (e) { console.warn('[taobao-clean] exchange rate failed', e); }
       },
@@ -624,12 +672,14 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   const num = (s) => parseFloat(s.replace(/,/g, ''));
 
   function convertPrices() {
-    if (!fxRate || !document.body) return;
+    if (!document.body) return;
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const done = new Set();
     const mark = (el, m) => {
       if (done.has(el)) return;
       done.add(el);
+      if (el.dataset.tbcleanCny !== String(num(m[1]))) el.dataset.tbcleanCny = num(m[1]);
+      if (!fxRate) return;
       const label = m[2] ? `${money(num(m[1]))}-${money(num(m[2]))}` : money(num(m[1]));
       if (el.dataset.tbcleanFx !== label) el.dataset.tbcleanFx = label;
     };
@@ -652,7 +702,10 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   }
 
   let fxTimer;
-  const scheduleFx = () => { clearTimeout(fxTimer); fxTimer = setTimeout(convertPrices, 500); };
+  const scheduleFx = () => {
+    clearTimeout(fxTimer);
+    fxTimer = setTimeout(() => { convertPrices(); refreshBar(); updateWatch(); }, 500);
+  };
 
   // -------------------------------------------------------------- tracking
 
@@ -831,6 +884,18 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     }
     if (!filter) return toast('Reviews opened, but there is no "with photos" filter');
     filter.click();
+    document.documentElement.classList.add('tbclean-grid');
+    toast('Showing photos only. Press 📷 again to show the review text.', 4000);
+  }
+
+  // First press opens the photo wall; next presses switch review text on and off.
+  function photoButton() {
+    const drawerOpen = [...document.querySelectorAll('[class*="Drawer--"]')].some((d) => d.getClientRects().length);
+    if (drawerOpen && findText((t) => PHOTO_FILTER.test(t))) {
+      const on = document.documentElement.classList.toggle('tbclean-grid');
+      return toast(on ? 'Photos only' : 'Showing review text');
+    }
+    openPhotoReviews();
   }
 
   // Review photos get bigger thumbnails; clicking opens Taobao's own viewer. The review area is
@@ -861,6 +926,181 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     }
   }
 
+  // ------------------------------------------------------- cost to Georgia
+
+  // Rates are base CNY. Forwarders quote USD per kg; the duty-free limit is in GEL.
+  const toCur = (cny, cur) => (fxRates && fxRates[cur] ? cny * fxRates[cur] : null);
+  const usdToCny = (usd) => (fxRates && fxRates.USD ? usd / fxRates.USD : null);
+  const shownCur = () => (FX_SYMBOL[settings.currency] ? settings.currency : 'USD');
+  const fmt = (cny) => {
+    const cur = shownCur(), v = toCur(cny, cur);
+    if (v == null) return `¥${cny.toFixed(2)}`;
+    return FX_SYMBOL[cur] + (v < 100 ? v.toFixed(2) : Math.round(v).toLocaleString('en'));
+  };
+
+  // The item's own price is the biggest ¥ figure outside the reviews drawer and feeds.
+  function mainPrice(scope = document) {
+    let best = null, size = 0;
+    for (const el of scope.querySelectorAll('[data-tbclean-cny]')) {
+      if (el.closest('[class*="Drawer--"],[data-tbclean-hidden],#tbclean-ui')) continue;
+      const fs = parseFloat(getComputedStyle(el).fontSize) || 0;
+      if (fs > size && el.getClientRects().length) { size = fs; best = el; }
+    }
+    return best ? parseFloat(best.dataset.tbcleanCny) : null;
+  }
+
+  const WEIGHT_LABEL = /^(净重|毛重|重量|产品重量|商品重量|包装重量|单品重量|Weight|Net weight)[:：]?$/i;
+  const WEIGHT_VALUE = /([\d.]+)\s*(kg|千克|公斤|g|克|斤)(?![a-z])/i;
+  const toKg = (m) => {
+    const v = parseFloat(m[1]), u = m[2].toLowerCase();
+    return u === 'g' || u === '克' ? v / 1000 : u === '斤' ? v / 2 : v;
+  };
+  let manualWeight = null;
+  function itemWeight() {
+    if (manualWeight) return { kg: manualWeight, from: 'you' };
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walker.nextNode());) {
+      const t = textOf(n);
+      if (!WEIGHT_LABEL.test(t)) continue;
+      // Spec tables put the label and the value in neighbouring cells.
+      for (let el = n.parentElement, i = 0; el && i < 3; el = el.parentElement, i++) {
+        const next = el.nextElementSibling;
+        const m = next && (next.textContent || '').match(WEIGHT_VALUE);
+        if (m) return { kg: toKg(m), from: 'specs' };
+      }
+    }
+    return null;
+  }
+
+  function sellerInfo() {
+    const out = {};
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walker.nextNode());) {
+      if (n.parentElement.closest('[class*="Drawer--"],#tbclean-ui')) continue;
+      const t = textOf(n);
+      let m;
+      if (out.age == null && (m = t.match(/(\d+)\s*年老店/))) out.age = +m[1];
+      if (out.good == null && (m = t.match(/好评率\s*[:：]?\s*([\d.]+)%/))) out.good = +m[1];
+      for (const [key, label] of [['desc', '宝贝描述'], ['service', '卖家服务'], ['logistics', '物流服务']]) {
+        if (out[key] != null || !t.startsWith(label)) continue;
+        m = t.match(/([1-5]\.\d)/) || (n.parentElement.nextElementSibling?.textContent || '').match(/([1-5]\.\d)/);
+        if (m) out[key] = +m[1];
+      }
+    }
+    return out;
+  }
+
+  function costSummary() {
+    const cny = mainPrice();
+    if (cny == null) return null;
+    const w = itemWeight();
+    const rate = settings.shipMode === 'air' ? settings.rateAir : settings.rateGround;
+    const shipCny = w && rate ? usdToCny(w.kg * rate) : null;
+    const totalCny = cny + (shipCny || 0);
+    const gel = toCur(totalCny, 'GEL');
+    return { cny, w, rate, shipCny, totalCny, over: gel != null && gel > settings.dutyLimit };
+  }
+
+  function cartTotal() {
+    const label = findText((t) => /^(合计|合计[:：]|总计|Total|Total:)$/.test(t));
+    if (!label) return null;
+    for (let el = label, i = 0; el && i < 4; el = el.parentElement, i++) {
+      const p = el.querySelector && el.querySelector('[data-tbclean-cny]');
+      if (p) return parseFloat(p.dataset.tbcleanCny);
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------- watchlist
+
+  const itemId = () => new URL(location.href).searchParams.get('id');
+  const getWatch = () => GM_getValue('watch', {});
+  function itemTitle() {
+    const el = document.querySelector('h1,[class*="mainTitle" i],[class*="ItemTitle" i]');
+    return ((el && el.textContent) || document.title).trim().slice(0, 140);
+  }
+  function itemImage() {
+    const og = document.querySelector('meta[property="og:image"]');
+    if (og) return og.content;
+    const img = [...document.images].find((i) => i.naturalWidth >= 300 && /alicdn/.test(i.src));
+    return img ? img.src : '';
+  }
+  function toggleWatch() {
+    const id = itemId(), list = getWatch();
+    if (list[id]) delete list[id];
+    else {
+      const price = mainPrice();
+      list[id] = { id, url: cleanItemUrl(location.href), title: itemTitle(), img: itemImage(),
+        first: price, last: price, min: price, added: Date.now(), seen: Date.now() };
+    }
+    GM_setValue('watch', list);
+    return !!list[id];
+  }
+  // Keep the saved price fresh whenever a watched item is opened.
+  function updateWatch() {
+    const id = KIND === 'item' && itemId(), list = getWatch();
+    if (!id || !list[id]) return;
+    const price = mainPrice();
+    if (price == null) return;
+    const w = list[id];
+    if (w.first == null) w.first = price;
+    w.last = price;
+    w.min = Math.min(w.min ?? price, price);
+    w.seen = Date.now();
+    if (!w.title || CJK.test(w.title)) w.title = itemTitle();
+    GM_setValue('watch', list);
+  }
+
+  // ------------------------------------------------------------------ sizes
+
+  const SHOE_US = { 34: 'W4', 35: 'M3.5 W5', 36: 'M4 W5.5', 37: 'M5 W6.5', 38: 'M5.5 W7', 39: 'M6.5 W8', 40: 'M7 W8.5',
+    41: 'M8 W9.5', 42: 'M8.5 W10', 43: 'M9.5 W11', 44: 'M10 W11.5', 45: 'M11 W12', 46: 'M12', 47: 'M12.5', 48: 'M13.5' };
+  const inch = (cm) => (cm / 2.54).toFixed(1).replace(/\.0$/, '');
+  function sizeHint(t) {
+    let m;
+    if ((m = t.match(/^(3[4-9]|4[0-8])\s*(码|号)?$/))) return `EU ${m[1]} · US ${SHOE_US[m[1]]}`;
+    if ((m = t.match(/^(1[4-9]\d)\/(\d{2,3})[ABYC]?$/))) {
+      const h = +m[1], ft = Math.floor(h / 30.48), inc = Math.round((h - ft * 30.48) / 2.54);
+      return `${h} cm tall (${ft}'${inc}"), ${m[2]} cm chest/waist (${inch(+m[2])}")`;
+    }
+    if ((m = t.match(/^(\d{1,3}(?:\.\d+)?)\s*(cm|CM|厘米)$/))) return `${inch(+m[1])} in`;
+    return null;
+  }
+  function markSizes(root) {
+    if (KIND !== 'item' || root.nodeType !== Node.ELEMENT_NODE) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walker.nextNode());) {
+      const el = n.parentElement;
+      if (!el || el.childElementCount || el.dataset.tbcleanSize || el.closest('#tbclean-ui')) continue;
+      const t = textOf(n);
+      // A bare "42" is only a shoe size inside the item's option picker.
+      if (/^\d+$/.test(t) && !el.closest('[class*="sku" i],[class*="valueItem" i],[class*="skuItem" i]')) continue;
+      const hint = sizeHint(t);
+      if (hint) el.dataset.tbcleanSize = hint;
+    }
+  }
+
+  // ----------------------------------------------------- "new feature" tips
+
+  // Onboarding bubbles ("AI comparison newly launched ... Got it"). Hidden, never clicked.
+  const GOT_IT = /^(知道了|我知道了|朕知道了|我已知晓|Got it|I see)$/i;
+  function hideBubbles(root) {
+    if (!['home', 'search', 'item', 'orders', 'cart', 'other'].includes(KIND) || root.nodeType !== Node.ELEMENT_NODE) return;
+    if (Date.now() - lastInput < 2000) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const vw = innerWidth, vh = innerHeight;
+    for (let n; (n = walker.nextNode());) {
+      if (!GOT_IT.test(textOf(n)) || n.parentElement.closest('#tbclean-ui')) continue;
+      for (let el = n.parentElement, i = 0; el && el !== document.body && i < 6; el = el.parentElement, i++) {
+        const pos = getComputedStyle(el).position;
+        if (pos !== 'absolute' && pos !== 'fixed') continue;
+        const r = el.getBoundingClientRect();
+        if ((r.width * r.height) / (vw * vh) < 0.15 && !isProtected(el)) hide(el);
+        break;
+      }
+    }
+  }
+
   // --------------------------------------------------------------- toolbar
 
   let toastEl;
@@ -883,12 +1123,71 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     ['home', 'Clean start page', 'Replaces the taobao.com homepage'],
   ];
 
+  let ui = null;
+
+  function refreshBar() {
+    if (!ui) return;
+    const $ = (sel) => ui.root.querySelector(sel);
+    const watch = $('#watch');
+    if (watch) watch.textContent = getWatch()[itemId()] ? '★ Watching' : '☆ Watch';
+    const btn = $('#cost');
+    if (!btn) return;
+    const limit = settings.dutyLimit;
+    if (KIND === 'cart') {
+      const cny = cartTotal();
+      const gel = cny != null ? toCur(cny, 'GEL') : null;
+      btn.textContent = cny != null ? `🧮 Cart ${fmt(cny)}` : '🧮 Cart total';
+      btn.classList.toggle('warn', gel != null && gel > limit);
+      if (ui.card.classList.contains('open')) {
+        ui.card.innerHTML = cny == null ? '<h3>Cart total</h3><div class="muted">Select items in the cart to see their total.</div>'
+          : `<h3>Selected items</h3><div class="r"><span>Items</span><b>¥${cny.toFixed(2)} ≈ ${fmt(cny)}</b></div>
+            <div class="${gel > limit ? 'bad' : 'ok'}">${gel > limit
+              ? `Over the ${limit} GEL duty-free limit. Shipping counts too, and items from one seller on one flight are added together, so split the order or expect customs fees.`
+              : `Under the ${limit} GEL duty-free limit, before shipping.`}</div>`;
+      }
+      return;
+    }
+    const c = costSummary();
+    btn.textContent = c ? `🧮 ${fmt(c.totalCny)}${c.shipCny ? ' delivered' : ''}` : '🧮 Cost';
+    btn.classList.toggle('warn', !!(c && c.over));
+    if (!ui.card.classList.contains('open')) return;
+    if (!c) { ui.card.innerHTML = '<h3>Cost to Georgia</h3><div class="muted">No price found on this page yet.</div>'; return; }
+    const mode = settings.shipMode;
+    const seg = `<span class="seg"><button data-mode="ground" class="${mode === 'ground' ? 'sel' : ''}">Ground</button><button data-mode="air" class="${mode === 'air' ? 'sel' : ''}">Air</button></span>`;
+    const kg = `<input id="kg" type="number" step="0.05" min="0" value="${c.w ? +c.w.kg.toFixed(3) : ''}" placeholder="kg"> kg`;
+    const shipRow = !c.rate
+      ? '<div class="r"><span>Shipping</span><button id="setRates">Add forwarder prices</button></div>'
+      : c.shipCny == null ? '<div class="r"><span>Shipping</span><span class="muted">enter the weight</span></div>'
+      : `<div class="r"><span>Shipping (${+c.w.kg.toFixed(3)} kg × $${c.rate})</span><b>${fmt(c.shipCny)}</b></div>`;
+    const s = sellerInfo();
+    const flags = [];
+    if (s.age != null) flags.push(s.age < 2 ? `<span class="bad">New store (${s.age} yr)</span>` : `<span class="ok">${s.age}-year store</span>`);
+    for (const [k, name] of [['desc', 'Description'], ['service', 'Service'], ['logistics', 'Shipping']]) {
+      if (s[k] != null) flags.push(`<span class="${s[k] < 4.6 ? 'bad' : 'ok'}">${name} ${s[k]}</span>`);
+    }
+    if (s.good != null) flags.push(`<span class="${s.good < 97 ? 'bad' : 'ok'}">${s.good}% positive</span>`);
+    ui.card.innerHTML = `<h3>Cost to Georgia (estimate)</h3>
+      <div class="r"><span>Item</span><b>¥${c.cny.toFixed(2)} ≈ ${fmt(c.cny)}</b></div>
+      <div class="r"><span>${seg}</span><span>${kg}${c.w && c.w.from === 'specs' ? ' <span class="muted">from specs</span>' : ''}</span></div>
+      ${shipRow}
+      <div class="r total"><span>Total</span><b>${fmt(c.totalCny)}</b></div>
+      <div class="${c.over ? 'bad' : 'ok'}">${c.over
+        ? `Over the ${settings.dutyLimit} GEL duty-free limit: customs fees apply. Split it into smaller parcels if you can.`
+        : `Under the ${settings.dutyLimit} GEL duty-free limit${c.shipCny ? '' : ' (before shipping)'}.`}</div>
+      <div class="sec"><b>Seller</b><div>${flags.length ? flags.join(' · ') : '<span class="muted">No store ratings found on this page.</span>'}</div></div>
+      <div class="muted" style="margin-top:6px">Domestic shipping in China is usually free. Forwarder fees for packing or insurance are not included.</div>`;
+  }
+
   function mountUI() {
     const hostEl = document.createElement('div');
     hostEl.id = 'tbclean-ui';
     const root = hostEl.attachShadow({ mode: 'open' });
     const extra = KIND === 'item'
-      ? '<button id="photos" title="Open reviews that have photos">📷 Photo reviews</button><button id="copy" title="Copy a short link to this item">🔗 Copy link</button>'
+      ? `<button id="cost" title="Estimated cost delivered to Georgia">🧮 Cost</button>
+         <button id="photos" title="Open reviews that have photos">📷 Photo reviews</button>
+         <button id="watch" title="Save this item and track its price"></button>
+         <button id="copy" title="Copy a short link to this item">🔗 Copy link</button>`
+      : KIND === 'cart' ? '<button id="cost" title="Selected items against the duty-free limit">🧮 Cart total</button>'
       : KIND === 'orders' ? '<button id="csv" title="Download the orders and tracking numbers on this page">⬇ Export CSV</button>' : '';
     const rows = PANEL.map(([key, label, hint]) => `<label class="row"><input type="checkbox" data-key="${key}">
       <span><b>${label}</b><small>${hint}</small></span></label>`).join('');
@@ -899,6 +1198,22 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
         box-shadow:0 1px 4px #0002;font:inherit;white-space:nowrap}
       .bar button:hover{border-color:#ff5000}
       .bar button.on{background:#ff5000;color:#fff;border-color:#ff5000}
+      .bar button.warn{background:#fff1e6;border-color:#e5484d;color:#c0262c}
+      .card{position:fixed;left:12px;bottom:56px;z-index:2147483647;width:320px;background:#fff;color:#222;border-radius:12px;
+        box-shadow:0 8px 30px #0003;padding:14px;font:13px/1.45 system-ui,sans-serif;display:none}
+      .card.open{display:block}
+      .card h3{margin:0 0 8px;font-size:14px}
+      .card .r{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
+      .card .r b{font-variant-numeric:tabular-nums}
+      .card .total{border-top:1px solid #eee;margin-top:4px;padding-top:6px;font-size:14px}
+      .card .ok{color:#1a7f37}.card .bad{color:#c0262c}.card .muted{color:#777;font-size:12px}
+      .card button{font:inherit;border:1px solid #ddd;border-radius:6px;background:inherit;color:inherit;cursor:pointer;padding:3px 8px}
+      .card .seg{display:inline-flex;border:1px solid #ddd;border-radius:6px;overflow:hidden}
+      .card .seg button{border:0;border-radius:0;padding:3px 10px}
+      .card .seg button.sel{background:#ff5000;color:#fff}
+      .card input{width:64px;font:inherit;border:1px solid #ddd;border-radius:6px;padding:2px 6px;background:inherit;color:inherit}
+      .card .sec{border-top:1px solid #eee;margin-top:8px;padding-top:8px}
+      .panel input[type=number]{width:70px;font:inherit;border:1px solid #ddd;border-radius:6px;padding:3px 6px;background:inherit;color:inherit}
       .toast{position:fixed;left:12px;bottom:56px;z-index:2147483647;max-width:340px;background:#222;color:#fff;padding:10px 14px;
         border-radius:8px;font:13px/1.4 system-ui,sans-serif;opacity:0;transition:opacity .2s;pointer-events:none}
       .panel{position:fixed;left:12px;bottom:56px;z-index:2147483647;width:300px;background:#fff;color:#222;border-radius:12px;
@@ -915,6 +1230,8 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
       @media (prefers-color-scheme:dark){
         .panel{background:#1f1f1d;color:#eee}.row,.line{border-color:#333}.row small,.tip{color:#999}
         select,.panel button{background:#2a2a28;color:#eee;border-color:#444}
+        .card{background:#1f1f1d;color:#eee}.card .total,.card .sec{border-color:#333}.card .muted{color:#999}
+        .card .seg,.card input,.panel input[type=number]{border-color:#444}.card .ok{color:#5ad17a}.card .bad{color:#ff7b7f}
       }
     </style>
     <div class="bar"><button id="lang" title="Switch between English and Chinese"></button>${extra}
@@ -923,9 +1240,13 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     <div class="panel" role="dialog" aria-label="Taobao Clean settings"><h3>Taobao Clean</h3>${rows}
       <div class="line"><span>Show prices in</span><select id="cur">
         <option value="GEL">GEL ₾</option><option value="USD">USD $</option><option value="EUR">EUR €</option><option value="off">Yuan only</option></select></div>
+      <div class="line"><span>Forwarder, USD per kg</span><span>Air <input type="number" step="0.1" min="0" id="rateAir">
+        Ground <input type="number" step="0.1" min="0" id="rateGround"></span></div>
+      <div class="line"><span>Duty-free limit (GEL)</span><input type="number" step="1" min="0" id="duty"></div>
       <div class="line"><span>Hidden on this site: <b id="hcount"></b></span><button id="unhide">Show again</button></div>
       <div class="tip">Hold Alt + Shift and click anything to hide it.</div>
       <button class="done">Done</button></div>
+    <div class="card" role="dialog" aria-label="Cost to Georgia"></div>
     <div class="toast" role="status"></div>`;
     const $ = (sel) => root.querySelector(sel);
     const lang = $('#lang');
@@ -939,7 +1260,7 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     };
     lang.onclick = () => setTranslate(!settings.translate);
     $('#home').onclick = () => { location.href = 'https://www.taobao.com/'; };
-    if ($('#photos')) $('#photos').onclick = openPhotoReviews;
+    if ($('#photos')) $('#photos').onclick = photoButton;
     if ($('#copy')) $('#copy').onclick = () => { GM_setClipboard(cleanItemUrl(location.href) || location.href); toast('Link copied'); };
     if ($('#csv')) $('#csv').onclick = exportCsv;
     toastEl = $('.toast');
@@ -950,10 +1271,32 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     const fill = () => {
       for (const box of root.querySelectorAll('[data-key]')) box.checked = !!settings[box.dataset.key];
       $('#cur').value = settings.currency;
+      $('#rateAir').value = settings.rateAir ?? '';
+      $('#rateGround').value = settings.rateGround ?? '';
+      $('#duty').value = settings.dutyLimit;
       $('#hcount').textContent = userHidden.length;
       $('#unhide').disabled = !userHidden.length;
     };
-    $('#gear').onclick = () => { fill(); panel.classList.toggle('open'); };
+    $('#gear').onclick = () => { fill(); card.classList.remove('open'); panel.classList.toggle('open'); };
+
+    // Cost card and watch button
+    const card = $('.card');
+    ui = { root, card, panel };
+    if ($('#cost')) $('#cost').onclick = () => { panel.classList.remove('open'); card.classList.toggle('open'); refreshBar(); };
+    if ($('#watch')) {
+      $('#watch').onclick = () => { toast(toggleWatch() ? 'Saved. It shows on the start page with its price.' : 'Removed from watchlist'); refreshBar(); };
+    }
+    card.addEventListener('click', (e) => {
+      const mode = e.target.closest('[data-mode]');
+      if (mode) { settings.shipMode = mode.dataset.mode; save(); refreshBar(); }
+      if (e.target.closest('#setRates')) { card.classList.remove('open'); fill(); panel.classList.add('open'); }
+    });
+    card.addEventListener('change', (e) => {
+      if (e.target.id !== 'kg') return;
+      const v = parseFloat(e.target.value);
+      manualWeight = Number.isFinite(v) && v > 0 ? v : null;
+      refreshBar();
+    });
     root.querySelectorAll('[data-key]').forEach((box) => {
       box.onchange = () => {
         if (box.dataset.key === 'translate') return setTranslate(box.checked);
@@ -963,6 +1306,17 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
       };
     });
     $('#cur').onchange = () => { settings.currency = $('#cur').value; save(); needsReload = true; };
+    const numSetting = (id, key) => {
+      $(id).onchange = () => {
+        const v = parseFloat($(id).value);
+        settings[key] = Number.isFinite(v) && v > 0 ? v : (key === 'dutyLimit' ? 300 : null);
+        save();
+        refreshBar();
+      };
+    };
+    numSetting('#rateAir', 'rateAir');
+    numSetting('#rateGround', 'rateGround');
+    numSetting('#duty', 'dutyLimit');
     $('#unhide').onclick = () => {
       userHidden = [];
       GM_setValue(hiddenKey, []);
@@ -973,9 +1327,10 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
       panel.classList.remove('open');
       if (needsReload) location.reload();
     };
-    addEventListener('keydown', (e) => { if (e.key === 'Escape') panel.classList.remove('open'); });
+    addEventListener('keydown', (e) => { if (e.key === 'Escape') { panel.classList.remove('open'); card.classList.remove('open'); } });
 
     document.documentElement.appendChild(hostEl);
+    refreshBar();
 
     if (!GM_getValue('welcomed', false)) {
       GM_setValue('welcomed', true);
@@ -1040,6 +1395,8 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     convertPrices();
     findOrders(document.body);
     markReviewImages();
+    markSizes(document.body);
+    hideBubbles(document.body);
 
     const dirty = new Set();
     let timer;
@@ -1055,7 +1412,7 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
         dirty.clear();
         for (const n of nodes) {
           if (!n.isConnected) continue;
-          if (n.nodeType === Node.ELEMENT_NODE) { cleanTree(n); findOrders(n); }
+          if (n.nodeType === Node.ELEMENT_NODE) { cleanTree(n); findOrders(n); markSizes(n); hideBubbles(n); }
           translateTree(n);
         }
         killPopups();

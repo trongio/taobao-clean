@@ -7,9 +7,14 @@ A userscript that makes Taobao and Tmall calmer to use, in English.
 - **No noise.** Hides sponsored results, countdown timers, red-packet widgets, floating sidebars and the "猜你喜欢 / 为你推荐 / 看了又看" recommendation feeds.
 - **English.** Buttons, labels, order statuses and sales counts use a built-in dictionary (instant, offline). Product titles and specs are machine translated with Google Translate and cached. The **EN / 中** button in the bottom-left corner switches back to Chinese at any time.
 - **Prices in your currency.** Every ¥ price gets an approximate GEL, USD or EUR price next to it (exchange rate refreshed twice a day). Pick the currency on the start page.
-- **Photo reviews.** On item pages, the **Photo reviews** button opens the reviews and selects the "with photos" filter. Review photos get bigger thumbnails (click one for the full-size view), and review text is translated.
 - **Tracking numbers.** The orders list shows each order's courier and tracking number with a Copy button, and **CSV** downloads the page's orders and tracking numbers (handy for forwarder warehouses).
 - **Links that behave.** Items open in the same tab instead of piling up new ones (Ctrl+click still opens a new tab), item URLs are stripped of tracking junk, and **Copy link** copies a clean link.
+- **Cost to Georgia.** On item pages, **🧮** shows the item price plus your forwarder's freight (air or ground, using the weight from the specs or one you type in) and warns when a parcel goes over the duty-free limit (300 GEL including shipping; check with your forwarder, it can change). In the cart it checks the selected total. Enter your forwarder's USD per kg in ⚙.
+- **Seller check.** The same card shows the store's age and ratings, and flags new stores and low scores.
+- **Photo wall.** **📷 Photo reviews** opens only the reviews that have photos, shown as a big photo grid. Press it again to show the review text.
+- **Watchlist.** **☆ Watch** saves an item. The start page lists saved items with their latest price and how much it changed since you saved it (prices update whenever you open the item).
+- **Sizes.** Shoe sizes get EU/US equivalents, clothing sizes like 170/92A are explained, and cm values get inches.
+- **No "new feature" bubbles.** The "AI comparison newly launched... Got it" style tips are hidden.
 - **Hide anything else.** Hold **Alt + Shift** and click any element to hide it on that site for good. Undo from the Tampermonkey menu.
 
 Login pages are translated to English (built-in dictionary only, nothing is sent to Google) but otherwise left exactly as they are. Slider captchas and security checks are never touched; you solve those as usual. Checkout is only translated, never altered.
@@ -64,7 +69,7 @@ Everything is in the floating bar at the bottom-left of every Taobao page:
 - **⌂ Start** goes to the clean start page (the original homepage is always at `https://www.taobao.com/?tbclean=off`).
 - **⚙** opens the settings: translation, product-title translation, popup blocking, opening items in the same tab, tracking numbers, the clean start page, the price currency, and **Show again** for anything you hid with Alt + Shift + click.
 
-Item pages also get **📷 Photo reviews** and **🔗 Copy link**, and the orders page gets **⬇ Export CSV**.
+Item pages also get **🧮 Cost**, **📷 Photo reviews**, **☆ Watch** and **🔗 Copy link**, the cart gets **🧮 Cart total**, and the orders page gets **⬇ Export CSV**. ⚙ also holds your forwarder's prices per kg and the duty-free limit.
 
 ## Privacy
 
