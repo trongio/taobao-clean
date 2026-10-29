@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Taobao Clean
 // @namespace    https://github.com/trongio/taobao-clean
-// @version      1.2.1
+// @version      1.2.2
 // @description  Calmer Taobao/Tmall: clean start page, no popups, ads, countdowns or recommendation feeds, plus English translation.
 // @author       trongio
 // @match        *://*.taobao.com/*
@@ -248,7 +248,7 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
       [class*="tbpc-sidebar" i],[class*="SideBar--"],[class*="sideBar--"]{display:none!important}`);
   }
   css.push(`[data-tbclean-fx]::after{content:" ≈ " attr(data-tbclean-fx);font:400 12px system-ui,sans-serif;color:#8a8780;margin-left:4px;white-space:nowrap}
-    img[data-tbclean-rev]{width:120px!important;height:120px!important;max-width:none!important;object-fit:cover!important;cursor:zoom-in!important;border-radius:6px}
+    img[data-tbclean-rev]{width:120px!important;height:120px!important;max-width:none!important;object-fit:cover!important;border-radius:6px}
     .tbclean-track{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 4px 12px;font:12px system-ui,sans-serif;color:#444;background:#fff4ec;border:1px solid #ffd2b8;border-radius:6px;padding:2px 8px}
     .tbclean-track button{font-size:11px;border:1px solid #ff5000;color:#ff5000;background:#fff;border-radius:4px;padding:0 6px;cursor:pointer}`);
   GM_addStyle(css.join('\n'));
@@ -808,27 +808,34 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   }
   const REVIEW_TAB = /^(用户评价|宝贝评价|累计评价|评价)\s*[(（]?[\d.万+]*[)）]?$/;
   const PHOTO_FILTER = /^(有图|图片|带图|有图\/视频|图\/视频|图片\/视频)\s*[(（]?[\d.万+]*[)）]?$/;
+  const VIEW_ALL = /^(查看全部评价|全部评价|查看更多评价)\s*[>›]?$/;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function waitText(re, tries = 12) {
+    for (let i = 0, el; i < tries; i++) {
+      if ((el = findText((t) => re.test(t)))) return el;
+      await sleep(400);
+    }
+    return null;
+  }
 
   async function openPhotoReviews() {
-    lastInput = Date.now() + 8000; // the reviews dialog is wanted, don't treat it as a popup
+    lastInput = Date.now() + 8000; // the reviews drawer is wanted, don't treat it as a popup
+    // The photo filter only exists in the full reviews drawer.
     let filter = findText((t) => PHOTO_FILTER.test(t));
     if (!filter) {
-      const tab = findText((t) => REVIEW_TAB.test(t));
-      if (!tab) return toast('No reviews section found on this page');
-      tab.scrollIntoView({ block: 'center' });
-      tab.click();
-      for (let i = 0; i < 10 && !(filter = findText((t) => PHOTO_FILTER.test(t))); i++) await sleep(400);
+      const viewAll = findText((t) => VIEW_ALL.test(t)) || findText((t) => REVIEW_TAB.test(t));
+      if (!viewAll) return toast('No reviews on this page');
+      viewAll.scrollIntoView({ block: 'center' });
+      viewAll.click();
+      filter = await waitText(PHOTO_FILTER);
     }
-    if (!filter) return toast('Reviews opened, but no "with photos" filter was found');
-    filter.scrollIntoView({ block: 'center' });
+    if (!filter) return toast('Reviews opened, but there is no "with photos" filter');
     filter.click();
   }
 
-  // Review photos: bigger thumbnails and a full-size viewer. The review area is
+  // Review photos get bigger thumbnails; clicking opens Taobao's own viewer. The review area is
   // whatever holds the photo filter, found again as the page re-renders.
-  const fullSize = (src) => src.replace(/^\/\//, 'https://').replace(/(\.(?:jpe?g|png|webp|gif))_[^/]*$/i, '$1');
-  function reviewRoots() {
+    function reviewRoots() {
     const roots = [];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n; (n = walker.nextNode());) {
@@ -842,6 +849,9 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   }
   function markReviewImages() {
     if (KIND !== 'item') return;
+    for (const img of document.querySelectorAll('[class*="album--"] img,img[src*="-rate.jpg"],img[src*="-rate.png"]')) {
+      img.dataset.tbcleanRev = '1';
+    }
     for (const root of reviewRoots()) {
       for (const img of root.querySelectorAll('img')) {
         if (img.dataset.tbcleanRev || /avatar|tps-|\.gif|\.svg/i.test(img.src)) continue;
@@ -850,23 +860,6 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
       }
     }
   }
-
-  let viewer;
-  function openViewer(list, index) {
-    viewer.list = list;
-    viewer.index = index;
-    viewer.show();
-  }
-  addEventListener('click', (e) => {
-    const img = e.target.closest && e.target.closest('img[data-tbclean-rev]');
-    if (!img || !viewer) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    const scope = img.closest('li,[class*="item" i],[class*="Comment" i]') || document.body;
-    let list = [...scope.querySelectorAll('img[data-tbclean-rev]')];
-    if (list.length < 2) list = [...document.querySelectorAll('img[data-tbclean-rev]')];
-    openViewer(list.map((i) => fullSize(i.currentSrc || i.src)), list.indexOf(img));
-  }, true);
 
   // --------------------------------------------------------------- toolbar
 
@@ -890,20 +883,10 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
       .bar button.on{background:#ff5000;color:#fff;border-color:#ff5000}
       .toast{position:fixed;left:12px;bottom:48px;z-index:2147483647;background:#222;color:#fff;padding:8px 12px;border-radius:8px;
         font:13px system-ui,sans-serif;opacity:0;transition:opacity .2s;pointer-events:none}
-      .viewer{position:fixed;inset:0;z-index:2147483647;background:#000e;display:none;align-items:center;justify-content:center}
-      .viewer.open{display:flex}
-      .viewer img{max-width:92vw;max-height:88vh;object-fit:contain;border-radius:6px}
-      .viewer button{position:absolute;border:0;border-radius:999px;background:#fff2;color:#fff;font:28px/1 system-ui,sans-serif;
-        width:52px;height:52px;cursor:pointer}
-      .viewer button:hover{background:#fff4}
-      .viewer .prev{left:16px;top:50%;transform:translateY(-50%)}.viewer .next{right:16px;top:50%;transform:translateY(-50%)}
-      .viewer .x{right:16px;top:16px;font-size:22px;width:44px;height:44px}
-      .viewer .count{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:#fff;font:13px system-ui,sans-serif}
     </style>
     <div class="bar"><button id="lang" title="Toggle English translation"></button>${extra}
     <button id="home" title="Clean start page">⌂</button></div><div class="toast"></div>
-    <div class="viewer"><img alt=""><button class="prev" title="Previous">‹</button><button class="next" title="Next">›</button>
-    <button class="x" title="Close">×</button><div class="count"></div></div>`;
+`;
     const $ = (sel) => root.querySelector(sel);
     const lang = $('#lang');
     const paint = () => { lang.textContent = settings.translate ? 'EN' : '中'; lang.classList.toggle('on', settings.translate); };
@@ -920,31 +903,6 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     if ($('#csv')) $('#csv').onclick = exportCsv;
     toastEl = $('.toast');
 
-    const v = $('.viewer'), vimg = v.querySelector('img'), count = $('.count');
-    viewer = {
-      list: [], index: 0,
-      show() {
-        if (!this.list.length) return;
-        this.index = (this.index + this.list.length) % this.list.length;
-        vimg.src = this.list[this.index];
-        count.textContent = `${this.index + 1} / ${this.list.length}`;
-        v.classList.add('open');
-      },
-      hide() { v.classList.remove('open'); vimg.removeAttribute('src'); },
-    };
-    $('.prev').onclick = () => { viewer.index--; viewer.show(); };
-    $('.next').onclick = () => { viewer.index++; viewer.show(); };
-    $('.x').onclick = () => viewer.hide();
-    v.onclick = (e) => { if (e.target === v || e.target === vimg) viewer.hide(); };
-    addEventListener('keydown', (e) => {
-      if (!v.classList.contains('open')) return;
-      if (e.key === 'Escape') viewer.hide();
-      else if (e.key === 'ArrowLeft') { viewer.index--; viewer.show(); }
-      else if (e.key === 'ArrowRight') { viewer.index++; viewer.show(); }
-      else return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }, true);
     document.documentElement.appendChild(hostEl);
   }
 

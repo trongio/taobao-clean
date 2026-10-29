@@ -7,7 +7,7 @@ A userscript that makes Taobao and Tmall calmer to use, in English.
 - **No noise.** Hides sponsored results, countdown timers, red-packet widgets, floating sidebars and the "猜你喜欢 / 为你推荐 / 看了又看" recommendation feeds.
 - **English.** Buttons, labels, order statuses and sales counts use a built-in dictionary (instant, offline). Product titles and specs are machine translated with Google Translate and cached. The **EN / 中** button in the bottom-left corner switches back to Chinese at any time.
 - **Prices in your currency.** Every ¥ price gets an approximate GEL, USD or EUR price next to it (exchange rate refreshed twice a day). Pick the currency on the start page.
-- **Photo reviews.** On item pages, the **Photo reviews** button opens the reviews and selects the "with photos" filter. Review photos get bigger thumbnails, and clicking one opens a full-size viewer (arrow keys to browse, Esc to close). Review text is translated.
+- **Photo reviews.** On item pages, the **Photo reviews** button opens the reviews and selects the "with photos" filter. Review photos get bigger thumbnails (click one for the full-size view), and review text is translated.
 - **Tracking numbers.** The orders list shows each order's courier and tracking number with a Copy button, and **CSV** downloads the page's orders and tracking numbers (handy for forwarder warehouses).
 - **Links that behave.** Items open in the same tab instead of piling up new ones (Ctrl+click still opens a new tab), item URLs are stripped of tracking junk, and **Copy link** copies a clean link.
 - **Hide anything else.** Hold **Alt + Shift** and click any element to hide it on that site for good. Undo from the Tampermonkey menu.
