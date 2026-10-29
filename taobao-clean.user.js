@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name         Taobao Clean
 // @namespace    https://github.com/trongio/taobao-clean
-// @version      1.0.0
+// @version      1.1.0
 // @description  Calmer Taobao/Tmall: clean start page, no popups, ads, countdowns or recommendation feeds, plus English translation.
 // @author       trongio
 // @match        *://*.taobao.com/*
 // @match        *://*.tmall.com/*
 // @match        *://*.tmall.hk/*
-// @exclude      *://login.taobao.com/*
-// @exclude      *://login.tmall.com/*
 // @exclude      *://passport.taobao.com/*
 // @exclude      *://*/*_____tmd_____*
 // @run-at       document-start
@@ -36,7 +34,8 @@
   const params = new URLSearchParams(location.search);
 
   const KIND =
-    host === 'www.taobao.com' && (path === '/' || path === '/index.php') ? 'home'
+    /^login\.(taobao|tmall)\.com$/.test(host) ? 'login'
+    : host === 'www.taobao.com' && (path === '/' || path === '/index.php') ? 'home'
     : host === 's.taobao.com' || host === 'list.tmall.com' ? 'search'
     : /^(item\.taobao\.com|detail\.tmall\.com|chaoshi\.detail\.tmall\.com|detail\.tmall\.hk)$/.test(host) ? 'item'
     : /^cart\./.test(host) ? 'cart'
@@ -44,12 +43,18 @@
     : /^(buyertrade|trade|i|refund2?|wuliu)\./.test(host) ? 'orders'
     : 'other';
 
-  // Never touch login or anti-bot UI: Taobao must be able to show and verify these.
-  const PROTECTED = [
-    'iframe[src*="login"]', 'iframe[src*="punish"]', 'iframe[src*="captcha"]', 'iframe[src*="_____tmd_____"]',
+  // Login pages and the login iframe only get their labels translated.
+  // Ad and widget iframes are left alone.
+  if (window.top !== window && KIND !== 'login') return;
+
+  // Never touch anti-bot UI, not even its text: Taobao must be able to show and verify it.
+  const CAPTCHA = [
+    'iframe[src*="punish"]', 'iframe[src*="captcha"]', 'iframe[src*="_____tmd_____"]',
     '[id*="baxia" i]', '[class*="baxia" i]', '[id^="nc_"]', '[class*="nc-container"]', '[class*="nc_wrapper"]',
-    '.J_MIDDLEWARE_FRAME_WIDGET', '[id*="login" i]', '[class*="login" i]', '[class*="captcha" i]',
+    '.J_MIDDLEWARE_FRAME_WIDGET', '[class*="captcha" i]',
   ].join(',');
+  // Never hide login UI either.
+  const PROTECTED = [CAPTCHA, 'iframe[src*="login"]', '[id*="login" i]', '[class*="login" i]'].join(',');
   const isProtected = (el) => !!(el.closest && (el.closest(PROTECTED) || el.querySelector(PROTECTED)));
 
   const CJK = /[㐀-鿿豈-﫿]/;
@@ -370,6 +375,23 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     '店铺动态': 'Store news', '本店搜索': 'Search this store', '搜本店': 'Search this store', '搜全站': 'Search all',
     '旗舰店': 'Flagship store', '专卖店': 'Brand store', '专营店': 'Retailer', '企业店铺': 'Business store',
     '金牌卖家': 'Gold seller', '描述': 'Description', '物流': 'Logistics', '高': 'High', '低': 'Low', '平': 'Avg',
+    // login
+    '密码登录': 'Password', '短信登录': 'SMS code', '扫码登录': 'QR code', '手机扫码登录': 'Scan with the Taobao app',
+    '阿里企业购登录 >': 'Alibaba business login >', '忘记密码': 'Forgot password', '忘记账号': 'Forgot account',
+    '怎么扫码登录?': 'How do I scan?', '怎么扫码登录？': 'How do I scan?', '打开': 'Open', '账号名/邮箱/手机号': 'Account name / email / phone',
+    '请输入账号名/邮箱/手机号': 'Account name / email / phone', '请输入登录密码': 'Password', '请输入密码': 'Password',
+    '请输入手机号': 'Phone number', '请输入手机号码': 'Phone number', '请输入验证码': 'Verification code',
+    '获取验证码': 'Get code', '重新获取': 'Resend', '重新发送': 'Resend', '验证码': 'Code', '手机号': 'Phone',
+    '账号': 'Account', '密码': 'Password', '登录中...': 'Logging in...', '下次自动登录': 'Stay logged in',
+    '已阅读并同意以下协议': 'I have read and agree to:', '淘宝平台服务协议': 'Taobao Platform Service Agreement',
+    '《淘宝平台服务协议》': 'Taobao Platform Service Agreement', '隐私权政策': 'Privacy Policy',
+    '《隐私权政策》': 'Privacy Policy', '法律声明': 'Legal Notice', '《法律声明》': 'Legal Notice',
+    '支付宝及客户端服务协议': 'Alipay and Client Service Agreement', '《支付宝及客户端服务协议》': 'Alipay and Client Service Agreement',
+    '同意': 'Agree', '不同意': 'Disagree', '同意并登录': 'Agree and log in', '同意协议并登录': 'Agree and log in',
+    '温馨提示': 'Notice', '请阅读并同意以下条款': 'Please read and agree to the terms below',
+    '其他登录方式': 'Other ways to log in', '支付宝': 'Alipay', '微博': 'Weibo', '二维码已失效': 'QR code expired',
+    '刷新': 'Refresh', '点击刷新': 'Refresh', '扫描成功': 'Scanned', '请在手机上确认登录': 'Confirm the login on your phone',
+    '中国大陆': 'Mainland China', '返回': 'Back', '安全验证': 'Security check', '请完成安全验证': 'Please complete the security check',
   };
 
   const wan = (s) => s.replace(/([\d.]+)万/g, (_, n) => {
@@ -391,6 +413,8 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     [/^(\d+)\s*件$/, (m) => `${m[1]} pcs`],
     [/^(\d+)\s*天内发货$/, (m) => `Ships within ${m[1]} days`],
     [/^(\d+)\s*小时内发货$/, (m) => `Ships within ${m[1]}h`],
+    [/^淘宝APP\s*[\u2014\-]+\s*点击左上角扫一扫$/, () => 'Taobao app: tap Scan in the top left'],
+    [/^(\d+)\s*秒后重新获取$/, (m) => `Resend in ${m[1]}s`],
   ];
 
   function localTranslate(t) {
@@ -425,12 +449,13 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
     const orig = node.data;
     const t = orig.trim();
     if (!t || !CJK.test(t) || t.length > 600) return;
-    if (p.closest(PROTECTED)) return;
+    if (p.closest(CAPTCHA)) return;
     const local = localTranslate(t);
     if (local) return setText(node, orig, local);
     const key = t.replace(/\s+/g, ' ');
     if (cache.has(key)) return setText(node, orig, cache.get(key));
-    if (!settings.machine) return;
+    // Nothing from login pages goes to Google; the dictionary covers their labels.
+    if (!settings.machine || KIND === 'login') return;
     origText.set(node, orig);
     if (!pending.has(key)) pending.set(key, []);
     pending.get(key).push(node);
@@ -533,7 +558,7 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   }, true);
   addEventListener('keyup', () => { outline(picked, false); picked = null; }, true);
   addEventListener('click', (e) => {
-    if (!(e.altKey && e.shiftKey) || e.target.closest('#tbclean-ui')) return;
+    if (!(e.altKey && e.shiftKey) || KIND === 'login' || e.target.closest('#tbclean-ui')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     outline(e.target, false);
@@ -611,13 +636,13 @@ footer{margin-top:48px;font-size:13px;color:var(--muted)}footer a{color:var(--mu
   registerMenu();
 
   function cleanTree(root) {
-    if (root.nodeType !== Node.ELEMENT_NODE) return;
+    if (root.nodeType !== Node.ELEMENT_NODE || KIND === 'login') return;
     if (KIND !== 'checkout') hideFeeds(root);
     if (KIND === 'search') hideAds(root);
   }
 
   function start() {
-    mountUI();
+    if (window.top === window) mountUI();
     cleanTree(document.body);
     translateTree(document.body);
     killPopups();

@@ -8,7 +8,7 @@ A userscript that makes Taobao and Tmall calmer to use, in English.
 - **English.** Buttons, labels, order statuses and sales counts use a built-in dictionary (instant, offline). Product titles and specs are machine translated with Google Translate and cached. The **EN / 中** button in the bottom-left corner switches back to Chinese at any time.
 - **Hide anything else.** Hold **Alt + Shift** and click any element to hide it on that site for good. Undo from the Tampermonkey menu.
 
-Login pages, slider captchas and security checks are never touched. You solve those as usual. Checkout is only translated, never altered.
+Login pages are translated to English (built-in dictionary only, nothing is sent to Google) but otherwise left exactly as they are. Slider captchas and security checks are never touched; you solve those as usual. Checkout is only translated, never altered.
 
 ## Install
 
